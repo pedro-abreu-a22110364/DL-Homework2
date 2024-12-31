@@ -4,14 +4,13 @@
 
 import argparse
 
+import numpy as np
 import torch
-from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
-from matplotlib import pyplot as plt
-import numpy as np
-
 import utils
+from matplotlib import pyplot as plt
+from torch.utils.data import DataLoader
 
 
 class ConvBlock(nn.Module):
@@ -20,6 +19,7 @@ class ConvBlock(nn.Module):
             in_channels,
             out_channels,
             kernel_size,
+            stride=1,
             padding=None,
             maxpool=True,
             batch_norm=True,
@@ -27,19 +27,31 @@ class ConvBlock(nn.Module):
         ):
         super().__init__()
 
-        # Q2.1. Initialize convolution, maxpool, activation and dropout layers 
-        
+        # Convolutional layer: output size = (W - K + 2P) / S + 1
+        # Output size = (48 - 3 + 2*1) / 1 + 1 = 48x48 -> [batch_size, out_channels, 48, 48]
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+
+        self.activation = nn.ReLU()
+
+        # Output size = (48 - 2) / 2 + 1 = 24x24 -> [batch_size, out_channels, 24, 24]
+        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2) if maxpool else None
+
+        self.dropout = nn.Dropout(dropout)
         
         # Q2.2 Initialize batchnorm layer 
         
-        raise NotImplementedError
 
-    def forward(self, x):
-        # input for convolution is [b, c, w, h]
-        
-        # Implement execution of layers in right order
+    def forward(self, x):        
+        x = self.conv(x)
 
-        raise NotImplementedError
+        x = self.activation(x)
+
+        if self.maxpool:
+            x = self.maxpool(x)
+
+        x = self.dropout(x)
+
+        return x
 
 
 class CNN(nn.Module):
@@ -52,20 +64,38 @@ class CNN(nn.Module):
         self.batch_norm = batch_norm
 
         # Initialize convolutional blocks
-        
-        # Initialize layers for the MLP block
+        self.conv_blocks = nn.Sequential(
+            ConvBlock(channels[0], channels[1], kernel_size=3, padding=1, maxpool=maxpool, dropout=dropout_prob),
+            ConvBlock(channels[1], channels[2], kernel_size=3, padding=1, maxpool=maxpool, dropout=dropout_prob),
+            ConvBlock(channels[2], channels[3], kernel_size=3, padding=1, maxpool=maxpool, dropout=dropout_prob)
+        )
+
+        # Flatten convolution output dimension
+        self.flattened_dim = channels[-1] * 6 * 6  # 128 channels, 6x6 spatial size after 3 blocks with pooling
+
+        # MLP block
+        self.mlp = nn.Sequential(
+            nn.Linear(self.flattened_dim, fc1_out_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout_prob),
+            nn.Linear(fc1_out_dim, fc2_out_dim),
+            nn.ReLU(),
+            nn.Linear(fc2_out_dim, 6) 
+        )
+
+
         # For Q2.2 initalize batch normalization
         
 
     def forward(self, x):
         x = x.reshape(x.shape[0], 3, 48, -1)
 
-        # Implement execution of convolutional blocks 
-        
-        # Flattent output of the last conv block
-        
-        # Implement MLP part
-        
+        x = self.conv_blocks(x)
+
+        x = x.view(x.shape[0], -1)
+
+        x = self.mlp(x)
+
         # For Q2.2 implement global averag pooling
         
 
