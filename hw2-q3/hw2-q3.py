@@ -3,16 +3,13 @@ import random
 from functools import partial
 from os.path import join
 
+import matplotlib.pyplot as plt
 import numpy as np
-
 import torch
 import torch.nn as nn
+from data import EOS_IDX, PAD_IDX, SOS_IDX, Seq2SeqDataset, collate_samples
+from models import BahdanauAttention, Decoder, Encoder, Seq2Seq, reshape_state
 from torch.utils.data import DataLoader
-
-import matplotlib.pyplot as plt
-
-from data import collate_samples, Seq2SeqDataset, PAD_IDX, SOS_IDX, EOS_IDX
-from models import Encoder, Decoder, Seq2Seq, BahdanauAttention, reshape_state
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -68,7 +65,7 @@ def train(data, model, lr, n_epochs, checkpoint_name, max_len=50):
             src_lengths = src_lengths.to(device)
 
             optimizer.zero_grad()
-            outputs, _ = model(src, src_lengths, tgt)
+            outputs, _ = model(src, src_lengths, tgt[:, :-1])
             loss = criterion(
                 outputs.reshape(-1, outputs.shape[-1]), tgt[:, 1:].reshape(-1)
             )

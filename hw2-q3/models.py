@@ -88,14 +88,29 @@ class Encoder(nn.Module):
         #   (after passing them to the LSTM)
         #############################################
         
+        # Embed the input tokens
+        embedded = self.dropout(self.embedding(src))  # Shape: (batch_size, max_src_len, hidden_size)
+
+        # Pack the embedded sequence
+        packed = pack(embedded, lengths.cpu(), batch_first=True, enforce_sorted=False)
+
+        # Pass through the LSTM
+        packed_outputs, (hidden, cell) = self.lstm(packed)
+
+        # Unpack the output sequence
+        outputs, _ = unpack(packed_outputs, batch_first=True)  # Shape: (batch_size, max_src_len, hidden_size)
+
+        # Apply dropout to final outputs
+        outputs = self.dropout(outputs)
+
+        return outputs, (hidden, cell)
 
         #############################################
         # END OF YOUR CODE
         #############################################
         # enc_output: (batch_size, max_src_len, hidden_size)
         # final_hidden: tuple with 2 tensors
-        # each tensor is (num_layers * num_directions, batch_size, hidden_size)
-        raise NotImplementedError("Add your implementation.")
+        # each tensor is (num_layers * num_directions, batch_size, hidden_size)        
 
 
 class Decoder(nn.Module):
@@ -158,15 +173,24 @@ class Decoder(nn.Module):
         #         src_lengths,
         #     )
         #############################################
-        
+
+        # Embed the target tokens
+        embedded = self.dropout(self.embedding(tgt))  # Shape: (batch_size, max_tgt_len, hidden_size)
+
+        # Pass the embeddings and hidden state through the LSTM
+        outputs, dec_state = self.lstm(embedded, dec_state)  # outputs: (batch_size, max_tgt_len, hidden_size)
+
+        # Apply dropout to final outputs
+        outputs = self.dropout(outputs)
+
+        return outputs, dec_state        
 
         #############################################
         # END OF YOUR CODE
         #############################################
         # outputs: (batch_size, max_tgt_len, hidden_size)
         # dec_state: tuple with 2 tensors
-        # each tensor is (num_layers, batch_size, hidden_size)
-        raise NotImplementedError("Add your implementation.")
+        # each tensor is (num_layers, batch_size, hidden_size)        
 
 
 class Seq2Seq(nn.Module):
