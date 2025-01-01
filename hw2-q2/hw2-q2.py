@@ -38,11 +38,14 @@ class ConvBlock(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
         
-        # Q2.2 Initialize batchnorm layer 
+        # Q2.2 Initialize batchnorm layer
+        self.batch_norm = nn.BatchNorm2d(out_channels) if batch_norm else nn.Identity()
         
 
     def forward(self, x):        
         x = self.conv(x)
+
+        x = self.batch_norm(x)
 
         x = self.activation(x)
 
@@ -71,33 +74,35 @@ class CNN(nn.Module):
         )
 
         # Flatten convolution output dimension
-        self.flattened_dim = channels[-1] * 6 * 6  # 128 channels, 6x6 spatial size after 3 blocks with pooling
+        # self.flattened_dim = channels[-1] * 6 * 6  # 128 channels, 6x6 spatial size after 3 blocks with pooling
+
+        # Global average pooling
+        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
 
         # MLP block
         self.mlp = nn.Sequential(
-            nn.Linear(self.flattened_dim, fc1_out_dim),
+            nn.Linear(channels[-1] * 1 * 1, fc1_out_dim),
+            nn.BatchNorm1d(fc1_out_dim) if batch_norm else nn.Identity(),
             nn.ReLU(),
             nn.Dropout(dropout_prob),
             nn.Linear(fc1_out_dim, fc2_out_dim),
+            nn.BatchNorm1d(fc2_out_dim) if batch_norm else nn.Identity(),
             nn.ReLU(),
             nn.Linear(fc2_out_dim, 6) 
-        )
-
-
-        # For Q2.2 initalize batch normalization
-        
+        )        
 
     def forward(self, x):
         x = x.reshape(x.shape[0], 3, 48, -1)
 
         x = self.conv_blocks(x)
 
-        x = x.view(x.shape[0], -1)
+        # x = x.view(x.shape[0], -1)
 
-        x = self.mlp(x)
+        # Global average pooling
+        x = self.global_avg_pool(x)
+        x = torch.flatten(x, 1)
 
-        # For Q2.2 implement global averag pooling
-        
+        x = self.mlp(x)        
 
         return F.log_softmax(x, dim=1)
  
@@ -153,7 +158,7 @@ def plot(epochs, plottable, ylabel='', name=''):
 
 
 def get_number_trainable_params(model):
-    raise NotImplementedError
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 def plot_file_name_sufix(opt, exlude):
@@ -172,7 +177,7 @@ def main():
                         need to change this value for your plots.""")
     parser.add_argument('-batch_size', default=8, type=int,
                         help="Size of training batch.")
-    parser.add_argument('-learning_rate', type=float, default=0.01,
+    parser.add_argument('-learning_rate', type=float, default=0.1,
                         help="""Learning rate for parameter updates""")
     parser.add_argument('-l2_decay', type=float, default=0)
     parser.add_argument('-dropout', type=float, default=0.1)
