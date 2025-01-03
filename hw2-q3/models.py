@@ -21,7 +21,9 @@ class BahdanauAttention(nn.Module):
     def __init__(self, hidden_size):
         super(BahdanauAttention, self).__init__()
         
-        raise NotImplementedError("Add your implementation.")
+        self.Ws = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.Wh = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.v = nn.Linear(hidden_size, 1, bias=False)
 
     def forward(self, query, encoder_outputs, src_lengths):
         """
@@ -32,7 +34,35 @@ class BahdanauAttention(nn.Module):
             attn_out:   (batch_size, max_tgt_len, hidden_size) - attended vector
         """
 
-        raise NotImplementedError("Add your implementation.")
+        batch_size, max_src_len, hidden_size = encoder_outputs.size()
+        max_tgt_len = query.size(1)
+
+        # Prepare for storing context vectors
+        context_vectors = []
+
+        for t in range(max_tgt_len):
+            # Extract the query for the current time step
+            query_t = query[:, t, :]  # Shape: (batch_size, hidden_size)
+
+            # Compute alignment scores
+            scores = self.v(torch.tanh(self.Wh(encoder_outputs) + self.Ws(query_t.unsqueeze(1)))).squeeze(-1)  # (batch_size, max_src_len)
+
+            # Apply mask to ignore padding in encoder outputs
+            mask = self.sequence_mask(src_lengths)  # (batch_size, max_src_len)
+            scores = scores.masked_fill(~mask, float("-inf"))
+
+            # Normalize scores to obtain attention weights
+            attention_weights = torch.softmax(scores, dim=-1)  # (batch_size, max_src_len)
+
+            # Compute context vector as weighted sum of encoder outputs
+            context_vector = torch.bmm(attention_weights.unsqueeze(1), encoder_outputs).squeeze(1)  # (batch_size, hidden_size)
+
+            context_vectors.append(context_vector)
+
+        # Stack context vectors for all target time steps
+        context_vectors = torch.stack(context_vectors, dim=1)  # (batch_size, max_tgt_len, hidden_size)
+
+        return context_vectors, attention_weights
 
     def sequence_mask(self, lengths):
         """
@@ -140,6 +170,10 @@ class Decoder(nn.Module):
 
         self.attn = attn
 
+        # Initialize attention combination layer if attention is used
+        if self.attn is not None:
+            self.attn_combine = nn.Linear(hidden_size * 2, hidden_size)
+
     def forward(
         self,
         tgt,
@@ -175,15 +209,15 @@ class Decoder(nn.Module):
         #############################################
 
         # Embed the target tokens
-        embedded = self.dropout(self.embedding(tgt))  # Shape: (batch_size, max_tgt_len, hidden_size)
+        embedded = self.dropout(self.embedding(tgt))  # (batch_size, max_tgt_len, hidden_size)
+        lstm_out, dec_state = self.lstm(embedded, dec_state)  # (batch_size, max_tgt_len, hidden_size)
 
-        # Pass the embeddings and hidden state through the LSTM
-        outputs, dec_state = self.lstm(embedded, dec_state)  # outputs: (batch_size, max_tgt_len, hidden_size)
+        if self.attn is not None:
+            context_vector, _ = self.attn(lstm_out, encoder_outputs, src_lengths)
+            lstm_out = torch.cat((lstm_out, context_vector), dim=-1)  # (batch_size, max_tgt_len, hidden_size * 2)
+            lstm_out = torch.tanh(self.attn_combine(lstm_out))  # (batch_size, max_tgt_len, hidden_size)
 
-        # Apply dropout to final outputs
-        outputs = self.dropout(outputs)
-
-        return outputs, dec_state        
+        return lstm_out, dec_state     
 
         #############################################
         # END OF YOUR CODE
