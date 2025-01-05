@@ -210,14 +210,20 @@ class Decoder(nn.Module):
 
         # Embed the target tokens
         embedded = self.dropout(self.embedding(tgt))  # (batch_size, max_tgt_len, hidden_size)
-        lstm_out, dec_state = self.lstm(embedded, dec_state)  # (batch_size, max_tgt_len, hidden_size)
+        output, dec_state = self.lstm(embedded, dec_state)  # (batch_size, max_tgt_len, hidden_size)
 
         if self.attn is not None:
-            context_vector, _ = self.attn(lstm_out, encoder_outputs, src_lengths)
-            lstm_out = torch.cat((lstm_out, context_vector), dim=-1)  # (batch_size, max_tgt_len, hidden_size * 2)
-            lstm_out = torch.tanh(self.attn_combine(lstm_out))  # (batch_size, max_tgt_len, hidden_size)
+            context_vector, _ = self.attn(
+                output, 
+                encoder_outputs, 
+                src_lengths
+            )
+            output = torch.cat((output, context_vector), dim=-1)  # (batch_size, max_tgt_len, hidden_size * 2)
+            output = torch.tanh(self.attn_combine(output))  # (batch_size, max_tgt_len, hidden_size)
 
-        return lstm_out, dec_state     
+        output = self.dropout(output)
+
+        return output, dec_state     
 
         #############################################
         # END OF YOUR CODE

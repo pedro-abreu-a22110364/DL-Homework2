@@ -226,10 +226,26 @@ def nucleus_sampling(logits, p=0.8):
     # 2. Select the smallest set of tokens whose cumulative probability mass exceeds p.
     # This is equivalent to selecting the tokens with highest probabilities, whose cumulative probability mass equals or exceeds p.
     # 3. Rescale the distribution and sample from the resulting set of tokens.
-    # Implementation of the steps as described above:
+    # Implementation of the steps as described above:    
+    
+    # 1. Transform the given logits into probabilities and sort them
+    probabilities = torch.softmax(logits, dim=-1)  # Shape: (vocab_size,)    
+    sorted_probs, sorted_indices = torch.sort(probabilities, descending=True)
 
-    raise NotImplementedError("Add your implementation.")
+    # 2. Select the smallest set of tokens whose cumulative probability mass exceeds p.
+    cumulative_probs = torch.cumsum(sorted_probs, dim=-1)  # Compute cumulative probabilities
+    nucleus_mask = cumulative_probs <= p  # Vector with booleans for cumulatives that are smaller or equal to p
+    nucleus_mask[0] = True  # Always include at least the most probable token    
+    nucleus_probs = sorted_probs[nucleus_mask] # Exclude tokens that are not in the nucleus (actual probabilities)
+    nucleus_indices = sorted_indices[nucleus_mask] # Exclude tokens that are not in the nucleus (indices of original vector)
+    
+    # 3. Rescale the distribution and sample from the resulting set of tokens.
+    nucleus_probs /= nucleus_probs.sum()    
+    next_token_idx = torch.multinomial(nucleus_probs, num_samples=1)
 
+    next_token = nucleus_indices[next_token_idx]
+
+    return next_token
 
 def main(args):
 
